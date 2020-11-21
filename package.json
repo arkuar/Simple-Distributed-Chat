@@ -1,0 +1,12 @@
+{
+  "name": "simple-distributed-chat",
+  "description": "A simple distributed application",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arkuar/Simple-Distributed-Chat.git"
+  },
+  "dependencies": {
+    "express": "^4.17.1",
+    "ws": "^7.4.0"
+  }
+}
