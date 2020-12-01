@@ -4,7 +4,7 @@ const messageList = document.querySelector('#messages')
 let ws
 
 function connect() {
-    const socket = new WebSocket('ws://localhost:8000')
+    const socket = new WebSocket('ws://localhost:8080')
 
     socket.onopen = () => {
         console.log('Opened connection')

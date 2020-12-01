@@ -1,9 +1,13 @@
 const express = require('express')
 const WebSocket = require('ws')
 const app = express();
-const port = process.argv[2] || 3000;
+const port = process.env.PORT || 3000;
 
 app.use(express.static('public'))
+
+app.get('/ping', (req, res) => {
+    res.send('pong')
+})
 
 const server = app.listen(port, () => {
     console.log(`Application listening on port ${port}`)

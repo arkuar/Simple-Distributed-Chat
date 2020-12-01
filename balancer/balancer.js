@@ -1,16 +1,10 @@
+const axios = require('axios')
 const http = require('http')
 const httpProxy = require('http-proxy')
+const config = require('./config')
+const PORT = config.PORT
 
-const addresses = [
-    {
-        host: '127.0.0.1',
-        port: 3000
-    },
-    {
-        host: '127.0.0.1',
-        port: 3001
-    }
-]
+const addresses = config.SERVERS
 
 /**
  * Node weights
@@ -78,11 +72,30 @@ function disableServer(target) {
     connections.set(target, 0)
 }
 
+function activateServer(target) {
+    weights.set(target, 1)
+}
+
 /**
- * Check server status
+ * Check server statuses
  */
-function heartbeat() {
-    //TODO
+async function heartbeat() {
+    try {
+        const queries = await Promise.allSettled(addresses.map((addr) => axios.get(`http://${addr.host}:${addr.port}/ping`)))
+        queries.forEach(({ status }, idx) => {
+            const target = addresses[idx]
+
+            if (status === 'fulfilled' && weights.get(target) === 0) {
+                log(`Activating server ${target.host}:${target.port}`)
+                activateServer(target)
+            } else if (status === 'rejected' && weights.get(target) > 0) {
+                log(`Disabling server ${target.host}:${target.port}`)
+                disableServer(target)
+            }
+        })
+    } catch (err) {
+        log('Unexpected error during heartbeat operation', err)
+    }   
 }
 
 const proxy = httpProxy.createProxyServer()
@@ -104,6 +117,23 @@ const server = http.createServer((req, res) => {
 
 server.on('upgrade', (req, socket, head) => {
     const target = nextProxy()
+    
+    socket.on('close', (hadError) => {
+        if (!hadError) {
+            log(`Socket connection closed to ${target.host}:${target.port}`)
+            decrementConnections(target)
+        }
+    })
+
+    socket.on('error', (err) => {
+        log(`Error in socket connection to ${target.host}:${target.port}`, err)
+        log('Updating server status')
+        disableServer(target)
+    })
+
+    log('Creating socket connection to', target)
+    incrementConnections(target)
+    
     proxy.ws(req, socket, head, { target: target }, (error) => {
         // Update server status and close the socket
         disableServer(target)
@@ -111,26 +141,13 @@ server.on('upgrade', (req, socket, head) => {
     })
 })
 
-proxy.on('open', (proxySocket) => {
-    // Find the connection that matches the socket
-    const target = addresses.find((addr) => {
-        return addr.host === proxySocket.remoteAddress
-            && addr.port === proxySocket.remotePort
-    })
-    
-    log(`Client connected to ${target.host}:${target.port}`)
-    
-    // Increment connection counter
-    incrementConnections(target)
+const heartbeatInterval = setInterval(heartbeat, 10000)
 
-    // Add the target as a key to the socket so we can decrement the counter later
-    proxySocket.key = target
+server.listen(PORT, () => {
+    log(`Balancer listening on port ${PORT}`)
 })
 
-proxy.on('close', (req, socket, head) => {
-    const target = socket.key
-    log(`Client disconnected from ${target.host}:${target.port}`)
-    decrementConnections(target)
+server.on('close', () => {
+    clearInterval(heartbeatInterval)
 })
 
-server.listen(8000)
