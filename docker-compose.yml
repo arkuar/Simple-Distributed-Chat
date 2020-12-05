@@ -8,6 +8,9 @@ services:
     environment: 
       - PORT=3000
       - REDIS_HOST=redis
+      - NAME=server1
+    volumes: 
+      - ./logs:/app/logs/
     container_name: server1
   server2:
     build: server/
@@ -16,6 +19,9 @@ services:
     environment:
       - PORT=3000
       - REDIS_HOST=redis
+      - NAME=server2
+    volumes: 
+      - ./logs:/app/logs/
     container_name: server2
   balancer:
     build: balancer/
@@ -24,7 +30,10 @@ services:
     environment: 
       - PORT=8000
       - SERVERS=server:3000;server2:3000
+      - NAME=balancer
     container_name: balancer
+    volumes:
+      - ./logs:/app/logs/
   redis:
     image: redis:alpine
     volumes: 

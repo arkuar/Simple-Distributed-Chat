@@ -1,8 +1,14 @@
 const axios = require('axios')
+const fs = require('fs')
 const http = require('http')
 const httpProxy = require('http-proxy')
 const config = require('./config')
+
+// ENV variables
 const PORT = config.PORT
+const NAME = config.NAME
+
+let logPath
 
 const addresses = config.SERVERS
 
@@ -18,16 +24,23 @@ const weights = new Map(addresses.map((address) => [address, 1]))
  */
 const connections = new Map(addresses.map((address) => [address, 0]))
 
+/**
+ * Logger function that writes the message to a file and prints it to stdout
+ */
 function log(msg, ...args) {
+    msg = `[${NAME}] ${msg}`
     if (args.length > 0) {
-        console.log(`[Balancer] ${msg}`, args)
+        console.log(`${msg}`, args)
     } else {
-        console.log(`[Balancer] ${msg}`)
+        console.log(`${msg}`)
     }
+    fs.appendFile(logPath, `${new Date().toISOString()}\t${msg}\n`, (err) => {
+        if(err) throw err
+    })
 }
 
 /**
- * Get next proxy with least connections
+ * Get the next proxy with least connections
  */
 function nextProxy() {
     for (m = 0; m < addresses.length; m++) {
@@ -141,9 +154,11 @@ server.on('upgrade', (req, socket, head) => {
     })
 })
 
+// Create interval for pinging the servers
 const heartbeatInterval = setInterval(heartbeat, 10000)
 
 server.listen(PORT, () => {
+    logPath = `logs/${NAME}-${new Date().toISOString().replace(/(:|\.)/g, '')}.log`
     log(`Balancer listening on port ${PORT}`)
 })
 
