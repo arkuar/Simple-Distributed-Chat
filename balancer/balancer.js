@@ -10,6 +10,9 @@ const NAME = config.NAME
 
 let logPath
 
+/**
+ * Addresses for the nodes
+ */
 const addresses = config.SERVERS
 
 /**
@@ -60,32 +63,26 @@ function nextProxy() {
 }
 
 /**
- * Increment target connection count
+ * Updates given target connection count
+ * @param {*} target 
+ * @param {number} num 
  */
-function incrementConnections(target) {
-    let count = connections.get(target) + 1
-    connections.set(target, count)
-}
-
-/**
- * Decrement target connection count
- */
-function decrementConnections(target) {
-    let count = connections.get(target) - 1
+function updateConnectionCount(target, num) {
+    let count = connections.get(target) + num
     connections.set(target, count)
 }
 
 /**
  * Set target server to appear offline and reset the connection counter
  */
-function disableServer(target) {
+function setServerOffline(target) {
     // Update target weight to 0
     weights.set(target, 0)
     // Reset target connections to 0
     connections.set(target, 0)
 }
 
-function activateServer(target) {
+function setServerOnline(target) {
     weights.set(target, 1)
 }
 
@@ -100,10 +97,10 @@ async function heartbeat() {
 
             if (status === 'fulfilled' && weights.get(target) === 0) {
                 log(`Activating server ${target.host}:${target.port}`)
-                activateServer(target)
+                setServerOnline(target)
             } else if (status === 'rejected' && weights.get(target) > 0) {
                 log(`Disabling server ${target.host}:${target.port}`)
-                disableServer(target)
+                setServerOffline(target)
             }
         })
     } catch (err) {
@@ -117,39 +114,42 @@ const server = http.createServer((req, res) => {
     const target = nextProxy()
     log(`Balancing request to ${target.host}:${target.port}`)
     
-    incrementConnections(target)
+    updateConnectionCount(target, 1)
     proxy.web(req, res, { target: target }, (error) => {
         // Update server status and return error to client
-        disableServer(target)
+        setServerOffline(target)
         res.writeHead(500)
         res.end('Error when connecting to a server, please retry')
     })
 
-    res.on('finish', () => decrementConnections(target))
+    res.on('finish', () => updateConnectionCount(target, -1))
 })
 
+/**
+ * Forward websocket connection to target
+ */
 server.on('upgrade', (req, socket, head) => {
     const target = nextProxy()
     
     socket.on('close', (hadError) => {
         if (!hadError) {
             log(`Socket connection closed to ${target.host}:${target.port}`)
-            decrementConnections(target)
+            updateConnectionCount(target, -1)
         }
     })
 
     socket.on('error', (err) => {
         log(`Error in socket connection to ${target.host}:${target.port}`, err)
         log('Updating server status')
-        disableServer(target)
+        setServerOffline(target)
     })
 
     log('Creating socket connection to', target)
-    incrementConnections(target)
+    updateConnectionCount(target, 1)
     
     proxy.ws(req, socket, head, { target: target }, (error) => {
         // Update server status and close the socket
-        disableServer(target)
+        setServerOffline(target)
         socket.destroy(true)
     })
 })
@@ -157,6 +157,9 @@ server.on('upgrade', (req, socket, head) => {
 // Create interval for pinging the servers
 const heartbeatInterval = setInterval(heartbeat, 10000)
 
+/**
+ * Create server and logfile
+ */
 server.listen(PORT, () => {
     logPath = `logs/${NAME}-${new Date().toISOString().replace(/(:|\.)/g, '')}.log`
     log(`Balancer listening on port ${PORT}`)

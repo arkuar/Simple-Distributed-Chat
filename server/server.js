@@ -46,10 +46,16 @@ subscriber.subscribe('users:leave')
 app.use(express.static('public'))
 app.use(express.json())
 
+/**
+ * Route for checking server availability
+ */
 app.get('/ping', (req, res) => {
     res.send('pong')
 })
 
+/**
+ * Login route
+ */
 app.post('/login', (req, res) => {
     const { userName } = req.body
     
@@ -66,6 +72,9 @@ app.post('/login', (req, res) => {
     })
 })
 
+/**
+ * Create server and logfile
+ */
 const server = app.listen(PORT, () => {
     logPath = `logs/${NAME}-${new Date().toISOString().replace(/(:|\.)/g, '')}.log`
     log(`Application listening on port ${PORT}`)
@@ -103,6 +112,30 @@ function broadcast(message) {
 }
 
 /**
+ * Checks if given user is connected
+ * @param {string} user 
+ */
+function checkUserConnection(user) {
+    redisClient.sismember('connected', user, (err, connected) => {
+        if (!connected) { 
+            // Not connected, publish a message about said user joining and update connected set
+            redisClient.sadd('connected', user)
+            publisher.publish('users:join', user)
+        }
+    })
+}
+/**
+ * Log connection close event and remove user from logged users set and connected users set
+ * @param {string} user 
+ */
+function closeUserConnection(user) {
+    redisClient.srem('users', user) // Free username for use
+    redisClient.srem('connected', user) // Remove user from connected set
+    publisher.publish('users:leave', user)
+    log(`User ${user} disconnected`)
+}
+
+/**
  * Establish websocket connection with the client
  */
 server.on('upgrade', (request, socket, head) => {
@@ -124,10 +157,13 @@ server.on('upgrade', (request, socket, head) => {
     })
 })
 
+/**
+ * Handle websocket connection
+ */
 wss.on('connection', (socket, request) => {
     let { user } = request.session
     log(`User ${user} connected`)
-    publisher.publish('users:join', user)
+    checkUserConnection(user)
 
     socket.on('message', (message) => {
         log(`User ${user} sent message: ${message}`)
@@ -135,8 +171,6 @@ wss.on('connection', (socket, request) => {
     })
 
     socket.on('close', () => {
-        redisClient.srem('users', user) // Free username for use
-        publisher.publish('users:leave', user)
-        log(`User ${user} disconnected`)
+        closeUserConnection(user)
     })
 })
