@@ -12,15 +12,36 @@ ul {
 h1 {
     text-align: center;   
 }
-
 form {
+    height: 3em;
+}
+
+#message-form {
     position: fixed;
     bottom: 0;
     width: 100%;
-    height: 3em;
 }
 
 input {
     width: 99%;
     height: 100%;
+}
+button {
+    height: 100%;
+    margin: 10px;
+    width: 90%;
+}
+
+#login {
+    text-align: center;
+    margin: 20%;
+}
+#login-form {
+    text-align: center;
+    display: inline-block
+}
+
+#error {
+    display: none;
+    color: red;
 }

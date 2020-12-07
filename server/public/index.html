@@ -6,11 +6,21 @@
 </head>
 
 <body>
-    <h1>Chat</h1>
-    <ul id="messages"></ul>
-    <form id="message-form" action="">
-        <input type="text" placeholder="Send message" />
-    </form>
+    <div id="chat">
+        <h1>Chat</h1>
+        <ul id="messages"></ul>
+        <form id="message-form" action="">
+            <input type="text" placeholder="Send message" />
+        </form>
+    </div>
+    <div id="login">
+        <h1>Login</h1>
+        <h2 id="error"></h2>
+        <form id="login-form" action="">
+            <input type="text" placeholder="Set username" />
+            <button type="submit">Connect</button>
+        </form>
+    </div>
     <script src="./client.js"></script>
 </body>
 
