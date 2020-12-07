@@ -60,12 +60,12 @@ app.post('/login', (req, res) => {
     const { userName } = req.body
     
     // Check if username is already taken
-    redisClient.sismember('users', userName, (_, reply) => {
+    redisClient.sismember('users', `"${userName}"`, (_, reply) => {
         if (reply) {
             log(`Username ${userName} already in use, denying login`)
             res.status(409).send({message: 'Username already in use'})
         } else {
-            redisClient.sadd('users', userName)
+            redisClient.sadd('users', `"${userName}"`)
             log(`Updating session for user ${userName}`)
             res.status(200).send({ userName, message: 'Login succesful' })
         }
@@ -116,10 +116,10 @@ function broadcast(message) {
  * @param {string} user 
  */
 function checkUserConnection(user) {
-    redisClient.sismember('connected', user, (err, connected) => {
+    redisClient.sismember('connected', `"${user}"`, (err, connected) => {
         if (!connected) { 
             // Not connected, publish a message about said user joining and update connected set
-            redisClient.sadd('connected', user)
+            redisClient.sadd('connected', `"${user}"`)
             publisher.publish('users:join', user)
         }
     })
@@ -129,8 +129,8 @@ function checkUserConnection(user) {
  * @param {string} user 
  */
 function closeUserConnection(user) {
-    redisClient.srem('users', user) // Free username for use
-    redisClient.srem('connected', user) // Remove user from connected set
+    redisClient.srem('users', `"${user}"`) // Free username for use
+    redisClient.srem('connected', `"${user}"`) // Remove user from connected set
     publisher.publish('users:leave', user)
     log(`User ${user} disconnected`)
 }
@@ -139,22 +139,24 @@ function closeUserConnection(user) {
  * Establish websocket connection with the client
  */
 server.on('upgrade', (request, socket, head) => {
-    const [query, user] = request.url?.split('=')
-    if (query !== '/?user' || !user) {
-        socket.destroy(new Error('Username missing or it is invalid'))
-        return
-    }
-    // Check if user is logged in
-    redisClient.sismember('users', user, (err, reply) => {
-        if (!reply) {
-            socket.destroy(new Error('Login to use the websocket'))
-            return
+    try {
+        const [query, user] = decodeURI(request.url).split('=')
+        if (query !== '/?user' || !user) {
+            throw new Error('Username missing or it is invalid')
         }
-        request.session = { user }
-        wss.handleUpgrade(request, socket, head, (ws) => {
-            wss.emit('connection', ws, request)
+        // Check if user is logged in
+        redisClient.sismember('users', `"${user}"`, (err, reply) => {
+            if (!reply) {
+                throw new Error('Login to use the websocket')
+            }
+            request.session = { user }
+            wss.handleUpgrade(request, socket, head, (ws) => {
+                wss.emit('connection', ws, request)
+            })
         })
-    })
+    } catch (err) {
+        socket.destroy(err.message)
+    }
 })
 
 /**
